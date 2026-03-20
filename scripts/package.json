@@ -1,0 +1,12 @@
+{
+  "name": "otterclaw-scripts",
+  "private": true,
+  "description": "Validation tooling for OtterClaw SKILL.md files.",
+  "scripts": {
+    "validate": "node validate-skills.js"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "js-yaml": "^4.1.0"
+  }
+}

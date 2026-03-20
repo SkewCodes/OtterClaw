@@ -1,0 +1,119 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "OtterClaw SKILL.md Frontmatter",
+  "description": "Schema for YAML frontmatter in OtterClaw skill files.",
+  "type": "object",
+  "required": ["name", "description", "version", "author", "tags", "requires"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$",
+      "description": "Lowercase, hyphenated skill identifier."
+    },
+    "description": {
+      "type": "string",
+      "minLength": 10,
+      "description": "One-sentence description of what the skill does."
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Semantic version (major.minor.patch)."
+    },
+    "author": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Author name or handle."
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9-]+$"
+      },
+      "minItems": 1,
+      "description": "Lowercase tags for discoverability."
+    },
+    "requires": {
+      "type": "object",
+      "required": ["bins", "install"],
+      "additionalProperties": false,
+      "properties": {
+        "bins": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "description": "CLI binaries the skill depends on."
+        },
+        "install": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "kind", "command", "bins", "label"],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Unique identifier for the install step."
+              },
+              "kind": {
+                "type": "string",
+                "enum": ["command"],
+                "description": "Type of install step."
+              },
+              "command": {
+                "type": "string",
+                "description": "Shell command to run."
+              },
+              "bins": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Binaries this step provides."
+              },
+              "label": {
+                "type": "string",
+                "description": "Human-readable label for the step."
+              }
+            }
+          },
+          "minItems": 1,
+          "description": "Steps to install required binaries."
+        }
+      }
+    },
+    "payment": {
+      "type": "object",
+      "required": ["scheme", "price", "currency", "per", "recipient"],
+      "additionalProperties": false,
+      "properties": {
+        "scheme": {
+          "type": "string",
+          "enum": ["orderly-ledger"],
+          "description": "Payment scheme identifier."
+        },
+        "price": {
+          "type": "string",
+          "pattern": "^\\d+(\\.\\d+)?$",
+          "description": "Price per unit as a decimal string."
+        },
+        "currency": {
+          "type": "string",
+          "enum": ["USDC"],
+          "description": "Payment currency."
+        },
+        "per": {
+          "type": "string",
+          "enum": ["request"],
+          "description": "Billing unit."
+        },
+        "recipient": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Orderly account ID of the skill provider."
+        }
+      },
+      "description": "402 payment configuration for premium skills. Optional."
+    }
+  }
+}
