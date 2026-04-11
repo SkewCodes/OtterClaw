@@ -4,6 +4,32 @@ All notable changes to OtterClaw skills are documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Each entry includes the skill name, version, and what changed.
 
+## 2026-04-12
+
+### orderly-list-market — 1.0.0
+- Initial release: permissionless perpetual market listing via `ListMarketIntent`
+- Commands: `market-list`, `market-list-status`, `market-list-oracles`
+- Includes oracle config, tick/lot size, margin parameters, listing bond documentation
+
+### orderly-market-seeder — 1.0.0
+- Initial release: bootstrap liquidity on freshly-listed markets
+- Commands: `market-seed`, `market-seed-status`, `market-seed-cancel`
+- Configurable spread, depth curve (linear/exponential), budget, and seed window
+- Auto-cancels unfilled orders when seed window expires
+
+### orderly-listing-scout — 1.0.0
+- Initial release: discover assets worth listing as new perp markets
+- Ships with one signal source: CoinGecko spot volume
+- Documents pluggable architecture for future sources (social, funding differentials, correlation gaps)
+- Outputs ranked candidates with rationale strings and confidence scores
+
+### Infrastructure
+- Added optional `capabilities` field to `schema/skill.schema.json` for capability flags (e.g. `creates-market`)
+- Added `listing` tag convention for listing-native skills
+- Added Listing Pipeline section to README
+- Added `capabilities` documentation to CONTRIBUTING.md
+- Fixed regex bug in `validate-skills.js` that prevented the validator from running (unclosed character class in body-matching pattern)
+
 ## 2026-03-20
 
 ### orderly-vault — 1.1.0

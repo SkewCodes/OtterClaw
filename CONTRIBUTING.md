@@ -43,6 +43,22 @@ requires:
 - **Output format** — what the agent should expect back
 - **Important notes** — edge cases, gotchas, security considerations
 
+## Capability Flags
+
+If your skill performs a privileged action (e.g. creating a new on-chain market), declare it with a `capabilities` array in the frontmatter:
+
+```yaml
+capabilities: [creates-market]
+```
+
+Capability flags are distinct from tags. Tags are for discoverability; capabilities affect agent behavior (elevated-tier signing, user confirmation prompts, etc.). Current flags:
+
+| Flag | Meaning |
+|------|---------|
+| `creates-market` | Skill can create a new perpetual market on Orderly Network |
+
+Also add the flag as a tag so it surfaces in searches.
+
 ## 402-Gated Skills
 
 To earn revenue from your skill, add a `payment` block to the frontmatter:

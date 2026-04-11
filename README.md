@@ -25,6 +25,19 @@ That's it. Your agent can now trade perps on Orderly Network.
 | [orderly-vault](skills/orderly-vault/SKILL.md) | OmniVault — deposit USDC, earn yield from market-making | 1.1.0 |
 | [orderly-402](skills/orderly-402/SKILL.md) | 402 payments — pay for premium skills and services | 1.0.0 |
 | [orderly-dex-builder](skills/orderly-dex-builder/SKILL.md) | Launch a perps DEX in minutes via Orderly ONE | 1.1.0 |
+| [orderly-list-market](skills/orderly-list-market/SKILL.md) | List a new perpetual market on Orderly Network | 1.0.0 |
+| [orderly-market-seeder](skills/orderly-market-seeder/SKILL.md) | Bootstrap liquidity on a freshly-listed market | 1.0.0 |
+| [orderly-listing-scout](skills/orderly-listing-scout/SKILL.md) | Discover assets worth listing as new perp markets | 1.0.0 |
+
+## Listing Pipeline
+
+The listing skills chain into the full permissionless listing flow without being a monolith:
+
+```
+listing-scout → list-market → market-seeder → (any MM skill)
+```
+
+Each is independently useful. A builder can take just `listing-scout` and pipe it into their own stack. Skills are LEGO, not frameworks.
 
 ## Architecture
 
@@ -45,7 +58,10 @@ otterclaw/
 │   ├── orderly-swap/              # Token swaps
 │   ├── orderly-vault/             # OmniVault yield
 │   ├── orderly-402/               # 402 payments
-│   └── orderly-dex-builder/       # Launch a DEX via Orderly ONE
+│   ├── orderly-dex-builder/       # Launch a DEX via Orderly ONE
+│   ├── orderly-list-market/       # Permissionless market listing
+│   ├── orderly-market-seeder/     # Bootstrap liquidity on new markets
+│   └── orderly-listing-scout/     # Discover listing candidates
 ├── partner-skills/                # Third-party builder skills
 ├── CHANGELOG.md                   # Version history for all skills
 ├── CONTRIBUTING.md                # How to submit a skill

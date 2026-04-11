@@ -32,7 +32,7 @@ function extractFrontmatter(content) {
 }
 
 function validateMarkdownBody(content) {
-  const bodyMatch = content.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n([\s\S*)$/);
+  const bodyMatch = content.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n([\s\S]*)$/);
   if (!bodyMatch) return ["No markdown body found after frontmatter."];
 
   const body = bodyMatch[1];

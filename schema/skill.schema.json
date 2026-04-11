@@ -82,6 +82,14 @@
         }
       }
     },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9-]+$"
+      },
+      "description": "Capability flags that affect agent behavior (e.g. creates-market triggers elevated-tier signing)."
+    },
     "payment": {
       "type": "object",
       "required": ["scheme", "price", "currency", "per", "recipient"],
