@@ -1,7 +1,11 @@
 ---
+id: orderly-listing-scout
 name: orderly-listing-scout
 description: Discover assets worth listing as new perpetual markets on Orderly Network — rank candidates by spot volume, with pluggable signal sources for social sentiment, funding differentials, and correlation gaps.
-version: 1.0.0
+version: 1.1.0
+publisher: "@orderly-network"
+hash: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+previousVersion: 1.0.0
 author: OtterClaw
 tags: [listing, data, discovery, defi, orderly]
 requires:
@@ -12,6 +16,28 @@ requires:
       command: "npm install -g @orderly.network/cli"
       bins: [orderly]
       label: "Install Orderly CLI"
+capabilities:
+  cli:
+    - binary: orderly
+      subcommands: [symbols, market-list]
+    - binary: curl
+      subcommands: ["-s"]
+    - binary: python3
+      subcommands: ["-c"]
+  network:
+    egress:
+      - "api.coingecko.com"
+      - "api.orderly.org"
+  filesystem:
+    denied:
+      - "~/.ssh/**"
+      - "**/.env*"
+      - "~/.claude/**"
+      - "~/.cursor/**"
+  env:
+    denied:
+      - "AWS_*"
+      - "AZURE_*"
 ---
 
 # Orderly Listing Scout

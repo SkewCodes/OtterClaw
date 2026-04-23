@@ -9,6 +9,8 @@ const ROOT = path.resolve(__dirname, "..");
 const SCHEMA_PATH = path.join(ROOT, "schema", "skill.schema.json");
 const SKILL_DIRS = ["skills", "partner-skills"];
 
+const strict = process.argv.includes("--strict");
+
 function findSkillFiles() {
   const files = [];
   for (const dir of SKILL_DIRS) {
@@ -26,13 +28,19 @@ function findSkillFiles() {
 }
 
 function extractFrontmatter(content) {
-  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
   if (!match) return null;
-  return yaml.load(match[1]);
+  try {
+    const parsed = yaml.load(match[1]);
+    if (parsed == null) return { __parseError: "Empty YAML document" };
+    return parsed;
+  } catch (e) {
+    return { __parseError: e.message || "YAML parse error" };
+  }
 }
 
 function validateMarkdownBody(content) {
-  const bodyMatch = content.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n([\s\S]*)$/);
+  const bodyMatch = content.match(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)([\s\S]*)$/);
   if (!bodyMatch) return ["No markdown body found after frontmatter."];
 
   const body = bodyMatch[1];
@@ -50,6 +58,59 @@ function validateMarkdownBody(content) {
   return errors;
 }
 
+function validateCapabilities(frontmatter, rel) {
+  const warnings = [];
+  const errors = [];
+
+  if (!frontmatter.capabilities) {
+    if (strict) {
+      errors.push(`${rel}: Missing capabilities block (--strict mode rejects skills without declared capabilities).`);
+    } else {
+      warnings.push(`${rel}: No capabilities block. Skill will run in deny-by-default mode. Add capabilities before the enforcement deadline.`);
+    }
+    return { warnings, errors };
+  }
+
+  const caps = frontmatter.capabilities;
+
+  if (strict) {
+    const hasContent = (caps.cli && caps.cli.length > 0)
+      || (caps.network && caps.network.egress && caps.network.egress.length > 0)
+      || (caps.filesystem && (
+        (caps.filesystem.read && caps.filesystem.read.length > 0)
+        || (caps.filesystem.write && caps.filesystem.write.length > 0)
+        || (caps.filesystem.denied && caps.filesystem.denied.length > 0)))
+      || (caps.env && (
+        (caps.env.reads && caps.env.reads.length > 0)
+        || (caps.env.denied && caps.env.denied.length > 0)));
+    if (!hasContent) {
+      errors.push(`${rel}: Empty capabilities block (--strict mode requires at least one declared capability).`);
+    }
+  }
+
+  if (caps.cli && Array.isArray(caps.cli)) {
+    for (const entry of caps.cli) {
+      if (!entry.binary) {
+        errors.push(`${rel}: capabilities.cli entry missing required 'binary' field.`);
+      }
+      if (!entry.subcommands || entry.subcommands.length === 0) {
+        errors.push(`${rel}: capabilities.cli entry for '${entry.binary || "?"}' must declare at least one subcommand.`);
+      }
+    }
+  }
+
+  if (caps.filesystem) {
+    const denied = caps.filesystem.denied || [];
+    const sensitivePatterns = ["~/.ssh/**", "**/.env*", "~/.claude/**", "~/.cursor/**"];
+    const hasSensitiveDenial = sensitivePatterns.some((p) => denied.includes(p));
+    if (!hasSensitiveDenial && (caps.filesystem.read || caps.filesystem.write)) {
+      warnings.push(`${rel}: capabilities.filesystem declares read/write but no sensitive-path denials. Consider denying ~/.ssh/**, **/.env*, ~/.claude/**, ~/.cursor/**.`);
+    }
+  }
+
+  return { warnings, errors };
+}
+
 function run() {
   const schema = JSON.parse(fs.readFileSync(SCHEMA_PATH, "utf8"));
   const ajv = new Ajv({ allErrors: true });
@@ -62,6 +123,7 @@ function run() {
   }
 
   let totalErrors = 0;
+  let totalWarnings = 0;
 
   for (const file of files) {
     const rel = path.relative(ROOT, file);
@@ -70,6 +132,11 @@ function run() {
     const frontmatter = extractFrontmatter(content);
     if (!frontmatter) {
       console.error(`FAIL  ${rel}: Missing or malformed YAML frontmatter.`);
+      totalErrors++;
+      continue;
+    }
+    if (frontmatter.__parseError) {
+      console.error(`FAIL  ${rel}: YAML parse error: ${frontmatter.__parseError}`);
       totalErrors++;
       continue;
     }
@@ -89,12 +156,25 @@ function run() {
       totalErrors++;
     }
 
-    if (valid && bodyErrors.length === 0) {
+    const { warnings, errors: capErrors } = validateCapabilities(frontmatter, rel);
+    for (const msg of capErrors) {
+      console.error(`FAIL  ${msg}`);
+      totalErrors++;
+    }
+    for (const msg of warnings) {
+      console.warn(`WARN  ${msg}`);
+      totalWarnings++;
+    }
+
+    if (valid && bodyErrors.length === 0 && capErrors.length === 0) {
       console.log(`PASS  ${rel}`);
     }
   }
 
-  console.log(`\n${files.length} file(s) checked, ${totalErrors} error(s).`);
+  const parts = [`${files.length} file(s) checked`, `${totalErrors} error(s)`];
+  if (totalWarnings > 0) parts.push(`${totalWarnings} warning(s)`);
+  if (strict) parts.push("(strict mode)");
+  console.log(`\n${parts.join(", ")}.`);
   process.exit(totalErrors > 0 ? 1 : 0);
 }
 

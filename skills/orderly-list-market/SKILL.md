@@ -1,10 +1,13 @@
 ---
+id: orderly-list-market
 name: orderly-list-market
 description: List a new perpetual futures market on Orderly Network — submit a ListMarketIntent with base asset, oracle config, and initial parameters. Returns market ID and listing tx reference.
-version: 1.0.0
+version: 1.1.0
+publisher: "@orderly-network"
+hash: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+previousVersion: 1.0.0
 author: OtterClaw
 tags: [listing, trading, perps, defi, orderly, creates-market]
-capabilities: [creates-market]
 requires:
   bins: [orderly]
   install:
@@ -13,6 +16,23 @@ requires:
       command: "npm install -g @orderly.network/cli"
       bins: [orderly]
       label: "Install Orderly CLI"
+capabilities:
+  cli:
+    - binary: orderly
+      subcommands: [market-list, market-list-status, market-list-oracles]
+  network:
+    egress:
+      - "api.orderly.org"
+  filesystem:
+    denied:
+      - "~/.ssh/**"
+      - "**/.env*"
+      - "~/.claude/**"
+      - "~/.cursor/**"
+  env:
+    denied:
+      - "AWS_*"
+      - "AZURE_*"
 ---
 
 # Orderly List Market

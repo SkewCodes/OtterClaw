@@ -1,9 +1,13 @@
 ---
+id: orderly-402
 name: orderly-402
 description: Handle 402 payments on Orderly Network — pay for premium agent skills and services using USDC. Manages payment balances, deposits, and automatic micropayments for 402-gated content.
-version: 1.0.0
+version: 1.1.0
+publisher: "@orderly-network"
+hash: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+previousVersion: 1.0.0
 author: OtterClaw
-tags: [payments, 402, premium, orderly]
+tags: [payments, "402", premium, orderly]
 requires:
   bins: [orderly]
   install:
@@ -12,6 +16,23 @@ requires:
       command: "npm install -g @orderly.network/cli"
       bins: [orderly]
       label: "Install Orderly CLI"
+capabilities:
+  cli:
+    - binary: orderly
+      subcommands: ["402"]
+  network:
+    egress:
+      - "api.orderly.org"
+  filesystem:
+    denied:
+      - "~/.ssh/**"
+      - "**/.env*"
+      - "~/.claude/**"
+      - "~/.cursor/**"
+  env:
+    denied:
+      - "AWS_*"
+      - "AZURE_*"
 ---
 
 # Orderly 402 Payments

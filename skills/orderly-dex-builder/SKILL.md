@@ -1,7 +1,11 @@
 ---
+id: orderly-dex-builder
 name: orderly-dex-builder
 description: Create and manage a perpetual futures DEX using Orderly ONE — the no-code platform to launch a fully-featured DEX in minutes with 140+ assets, 17+ chains, and shared omnichain liquidity.
-version: 1.1.0
+version: 1.2.0
+publisher: "@orderly-network"
+hash: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+previousVersion: 1.1.0
 author: OtterClaw
 tags: [dex, builder, orderly-one, defi, orderly]
 requires:
@@ -12,6 +16,28 @@ requires:
       command: "npm install -g @orderly.network/cli"
       bins: [orderly]
       label: "Install Orderly CLI"
+capabilities:
+  cli:
+    - binary: curl
+      subcommands: ["-X"]
+    - binary: npx
+      subcommands: ["@orderly.network/mcp-server"]
+  network:
+    egress:
+      - "api.orderly.org"
+      - "testnet-api.orderly.org"
+      - "dex.orderly.network"
+      - "registry.npmjs.org"
+  filesystem:
+    denied:
+      - "~/.ssh/**"
+      - "**/.env*"
+      - "~/.claude/**"
+      - "~/.cursor/**"
+  env:
+    denied:
+      - "AWS_*"
+      - "AZURE_*"
 ---
 
 # Orderly DEX Builder

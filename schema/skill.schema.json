@@ -1,11 +1,16 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "OtterClaw SKILL.md Frontmatter",
-  "description": "Schema for YAML frontmatter in OtterClaw skill files.",
+  "description": "Schema for YAML frontmatter in OtterClaw skill files. Includes capability manifest for SecClaw-gated runtime enforcement.",
   "type": "object",
   "required": ["name", "description", "version", "author", "tags", "requires"],
   "additionalProperties": false,
   "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$",
+      "description": "Globally unique skill identifier. Used by the runtime and SecClaw event stream."
+    },
     "name": {
       "type": "string",
       "pattern": "^[a-z0-9][a-z0-9-]*$",
@@ -20,6 +25,21 @@
       "type": "string",
       "pattern": "^\\d+\\.\\d+\\.\\d+$",
       "description": "Semantic version (major.minor.patch)."
+    },
+    "publisher": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Publisher identity (e.g. @orderly-network). Used for bundle-level attestation."
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "description": "SHA-256 content hash of the skill file. Verified at install and deploy time."
+    },
+    "previousVersion": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Version this release supersedes. Enables capability-diff between versions."
     },
     "author": {
       "type": "string",
@@ -83,12 +103,93 @@
       }
     },
     "capabilities": {
-      "type": "array",
-      "items": {
-        "type": "string",
-        "pattern": "^[a-z0-9-]+$"
-      },
-      "description": "Capability flags that affect agent behavior (e.g. creates-market triggers elevated-tier signing)."
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Structured capability manifest. Declares all CLI, network, filesystem, and env access the skill requires. Undeclared access is blocked at runtime and reported to SecClaw.",
+      "properties": {
+        "cli": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["binary", "subcommands"],
+            "additionalProperties": false,
+            "properties": {
+              "binary": {
+                "type": "string",
+                "description": "CLI binary name (e.g. npm, gh, orderly)."
+              },
+              "subcommands": {
+                "type": "array",
+                "items": { "type": "string" },
+                "minItems": 1,
+                "description": "Allowed subcommands for this binary."
+              },
+              "allowedPackages": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "For package managers: allowed package specifiers (e.g. next@^14.0.0)."
+              },
+              "allowedRoutes": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "For API CLIs (e.g. gh): allowed API route patterns."
+              }
+            }
+          },
+          "description": "Declared CLI binary invocations. Every runtime.exec() call must match an entry here."
+        },
+        "network": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "egress": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Allowed outbound hostnames for runtime.fetch()."
+            }
+          },
+          "description": "Network access declarations."
+        },
+        "filesystem": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "read": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Glob patterns for allowed read paths."
+            },
+            "write": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Glob patterns for allowed write paths."
+            },
+            "denied": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Glob patterns for unconditionally denied paths (e.g. ~/.ssh/**, **/.env*)."
+            }
+          },
+          "description": "Filesystem access declarations."
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "reads": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Environment variable names the skill may read."
+            },
+            "denied": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Environment variable patterns that are unconditionally denied (e.g. AWS_*)."
+            }
+          },
+          "description": "Environment variable access declarations."
+        }
+      }
     },
     "payment": {
       "type": "object",

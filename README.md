@@ -18,16 +18,16 @@ That's it. Your agent can now trade perps on Orderly Network.
 
 | Skill | Description | Version |
 |-------|-------------|---------|
-| [orderly-onboarding](skills/orderly-onboarding/SKILL.md) | Set up an Orderly Network account — create keys, configure auth | 1.0.0 |
-| [orderly-trader](skills/orderly-trader/SKILL.md) | Trade perpetual futures — orders, positions, leverage, algo orders | 1.0.0 |
-| [orderly-data](skills/orderly-data/SKILL.md) | Market data — prices, orderbooks, funding rates, klines | 1.1.0 |
-| [orderly-swap](skills/orderly-swap/SKILL.md) | On-chain token swaps across supported EVM chains | 1.0.0 |
-| [orderly-vault](skills/orderly-vault/SKILL.md) | OmniVault — deposit USDC, earn yield from market-making | 1.1.0 |
-| [orderly-402](skills/orderly-402/SKILL.md) | 402 payments — pay for premium skills and services | 1.0.0 |
-| [orderly-dex-builder](skills/orderly-dex-builder/SKILL.md) | Launch a perps DEX in minutes via Orderly ONE | 1.1.0 |
-| [orderly-list-market](skills/orderly-list-market/SKILL.md) | List a new perpetual market on Orderly Network | 1.0.0 |
-| [orderly-market-seeder](skills/orderly-market-seeder/SKILL.md) | Bootstrap liquidity on a freshly-listed market | 1.0.0 |
-| [orderly-listing-scout](skills/orderly-listing-scout/SKILL.md) | Discover assets worth listing as new perp markets | 1.0.0 |
+| [orderly-onboarding](skills/orderly-onboarding/SKILL.md) | Set up an Orderly Network account — create keys, configure auth | 1.1.0 |
+| [orderly-trader](skills/orderly-trader/SKILL.md) | Trade perpetual futures — orders, positions, leverage, algo orders | 1.1.0 |
+| [orderly-data](skills/orderly-data/SKILL.md) | Market data — prices, orderbooks, funding rates, klines | 1.2.0 |
+| [orderly-swap](skills/orderly-swap/SKILL.md) | On-chain token swaps across supported EVM chains | 1.1.0 |
+| [orderly-vault](skills/orderly-vault/SKILL.md) | OmniVault — deposit USDC, earn yield from market-making | 1.2.0 |
+| [orderly-402](skills/orderly-402/SKILL.md) | 402 payments — pay for premium skills and services | 1.1.0 |
+| [orderly-dex-builder](skills/orderly-dex-builder/SKILL.md) | Launch a perps DEX in minutes via Orderly ONE | 1.2.0 |
+| [orderly-list-market](skills/orderly-list-market/SKILL.md) | List a new perpetual market on Orderly Network | 1.1.0 |
+| [orderly-market-seeder](skills/orderly-market-seeder/SKILL.md) | Bootstrap liquidity on a freshly-listed market | 1.1.0 |
+| [orderly-listing-scout](skills/orderly-listing-scout/SKILL.md) | Discover assets worth listing as new perp markets | 1.1.0 |
 
 ## Listing Pipeline
 
@@ -45,12 +45,21 @@ Each is independently useful. A builder can take just `listing-scout` and pipe i
 otterclaw/
 ├── .github/
 │   └── workflows/
-│       └── validate-skills.yml    # CI — schema + version bump checks on PRs
+│       └── validate-skills.yml    # CI — schema, body, capability audit, typecheck, version bump
 ├── schema/
-│   └── skill.schema.json          # Formal JSON Schema for SKILL.md frontmatter
+│   └── skill.schema.json          # Formal JSON Schema for SKILL.md frontmatter (inc. capabilities)
 ├── scripts/
 │   ├── package.json               # Validator dependencies (ajv, js-yaml)
-│   └── validate-skills.js         # Validates all SKILL.md files
+│   ├── validate-skills.js         # Validates all SKILL.md files
+│   └── audit-capabilities.js      # Scans skills and proposes capability blocks
+├── src/                           # Skill runtime (TypeScript)
+│   ├── schema/
+│   │   └── skill-frontmatter.ts   # Types + capability validation logic
+│   ├── runtime/
+│   │   └── exec.ts                # Sandboxed exec API — SecClaw-gated CLI invocation
+│   ├── events/
+│   │   └── secclaw-bridge.ts      # Event stream to SecClaw daemon
+│   └── index.ts                   # Barrel exports
 ├── skills/                        # Core Orderly skills
 │   ├── orderly-onboarding/        # Account setup
 │   ├── orderly-trader/            # Perps trading
@@ -63,13 +72,15 @@ otterclaw/
 │   ├── orderly-market-seeder/     # Bootstrap liquidity on new markets
 │   └── orderly-listing-scout/     # Discover listing candidates
 ├── partner-skills/                # Third-party builder skills
+├── package.json                   # Runtime dependencies + TypeScript build
+├── tsconfig.json                  # TypeScript config for src/
 ├── CHANGELOG.md                   # Version history for all skills
 ├── CONTRIBUTING.md                # How to submit a skill
 ├── SKILL_TEMPLATE.md              # Template for new skills
 └── SKILL_TEMPLATE_402.md          # Template for 402-gated skills
 ```
 
-No server. No database. No auth. GitHub is the backend. Skills are files. Builders submit PRs.
+GitHub is the backend. Skills are files. Builders submit PRs. The runtime gates all CLI/network/filesystem/env access through declared capabilities and reports to SecClaw.
 
 ## What This Wraps
 
@@ -101,7 +112,7 @@ Want to publish a skill for the Orderly ecosystem? Gate it with 402 to earn reve
 2. Add your skill to `partner-skills/your-skill-name/SKILL.md`
 3. Open a PR — see [CONTRIBUTING.md](CONTRIBUTING.md) for details
 
-All PRs are validated automatically by CI (schema check, body check, version bump check).
+PRs that modify skill files, schema, scripts, or source are validated automatically by CI (schema check, body check, capability audit, TypeScript typecheck, version bump check).
 
 ## Validation
 

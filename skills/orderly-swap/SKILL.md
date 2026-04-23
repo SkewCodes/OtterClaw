@@ -1,7 +1,11 @@
 ---
+id: orderly-swap
 name: orderly-swap
 description: Swap tokens on-chain through Orderly Network — cross-chain token swaps across Arbitrum, Base, Optimism and other supported EVM chains with competitive routing.
-version: 1.0.0
+version: 1.1.0
+publisher: "@orderly-network"
+hash: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+previousVersion: 1.0.0
 author: OtterClaw
 tags: [swap, defi, trading, orderly]
 requires:
@@ -12,6 +16,23 @@ requires:
       command: "npm install -g @orderly.network/cli"
       bins: [orderly]
       label: "Install Orderly CLI"
+capabilities:
+  cli:
+    - binary: orderly
+      subcommands: [swap, swap-quote, wallet-balance]
+  network:
+    egress:
+      - "api.orderly.org"
+  filesystem:
+    denied:
+      - "~/.ssh/**"
+      - "**/.env*"
+      - "~/.claude/**"
+      - "~/.cursor/**"
+  env:
+    denied:
+      - "AWS_*"
+      - "AZURE_*"
 ---
 
 # Orderly Swap

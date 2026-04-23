@@ -1,7 +1,11 @@
 ---
+id: orderly-trader
 name: orderly-trader
 description: Trade perpetual futures on Orderly Network — place orders, manage positions, set leverage, execute algo orders (TP/SL, trailing stop, bracket). Uses the Orderly CLI with OS keychain security.
-version: 1.0.0
+version: 1.1.0
+publisher: "@orderly-network"
+hash: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+previousVersion: 1.0.0
 author: OtterClaw
 tags: [trading, perps, defi, orderly]
 requires:
@@ -12,6 +16,23 @@ requires:
       command: "npm install -g @orderly.network/cli"
       bins: [orderly]
       label: "Install Orderly CLI"
+capabilities:
+  cli:
+    - binary: orderly
+      subcommands: [order-place, algo-order-place, order-cancel, order-cancel-all, order-list, order-edit, positions-list, positions-close, leverage, trades]
+  network:
+    egress:
+      - "api.orderly.org"
+  filesystem:
+    denied:
+      - "~/.ssh/**"
+      - "**/.env*"
+      - "~/.claude/**"
+      - "~/.cursor/**"
+  env:
+    denied:
+      - "AWS_*"
+      - "AZURE_*"
 ---
 
 # Orderly Trader

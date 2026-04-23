@@ -7,6 +7,12 @@ on:
       - "partner-skills/**/SKILL.md"
       - "schema/**"
       - "scripts/**"
+      - "src/**"
+      - ".github/workflows/**"
+      - "package.json"
+      - "tsconfig.json"
+      - "SKILL_TEMPLATE.md"
+      - "SKILL_TEMPLATE_402.md"
 
 jobs:
   validate:
@@ -30,14 +36,55 @@ jobs:
         working-directory: scripts
         run: node validate-skills.js
 
+  capability-audit:
+    name: Audit declared capabilities
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        working-directory: scripts
+        run: npm install
+
+      - name: Run capability audit
+        working-directory: scripts
+        run: node audit-capabilities.js
+
+  typecheck:
+    name: Typecheck runtime
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install runtime dependencies
+        run: npm install
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
   version-check:
     name: Check version bump on modified skills
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
 
     steps:
       - name: Checkout PR branch
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Checkout base branch for comparison
         uses: actions/checkout@v4

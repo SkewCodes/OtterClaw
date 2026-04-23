@@ -1,7 +1,11 @@
 ---
+id: orderly-vault
 name: orderly-vault
 description: Interact with Orderly OmniVault — deposit USDC to earn yield from professional market-making strategies. Omnichain deposits and withdrawals across Arbitrum, Base, Optimism and more.
-version: 1.1.0
+version: 1.2.0
+publisher: "@orderly-network"
+hash: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+previousVersion: 1.1.0
 author: OtterClaw
 tags: [vault, yield, defi, orderly]
 requires:
@@ -12,6 +16,23 @@ requires:
       command: "npm install -g @orderly.network/cli"
       bins: [orderly]
       label: "Install Orderly CLI"
+capabilities:
+  cli:
+    - binary: orderly
+      subcommands: [account-balance, vault-info, vault-balance, vault-history]
+  network:
+    egress:
+      - "api.orderly.org"
+  filesystem:
+    denied:
+      - "~/.ssh/**"
+      - "**/.env*"
+      - "~/.claude/**"
+      - "~/.cursor/**"
+  env:
+    denied:
+      - "AWS_*"
+      - "AZURE_*"
 ---
 
 # Orderly OmniVault

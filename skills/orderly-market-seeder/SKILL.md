@@ -1,7 +1,11 @@
 ---
+id: orderly-market-seeder
 name: orderly-market-seeder
 description: Bootstrap liquidity on a freshly-listed perpetual market — place a symmetric order grid with configurable spread, depth curve, and seed window. Hands off to downstream MM skills after seeding.
-version: 1.0.0
+version: 1.1.0
+publisher: "@orderly-network"
+hash: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+previousVersion: 1.0.0
 author: OtterClaw
 tags: [listing, trading, market-making, defi, orderly]
 requires:
@@ -12,6 +16,23 @@ requires:
       command: "npm install -g @orderly.network/cli"
       bins: [orderly]
       label: "Install Orderly CLI"
+capabilities:
+  cli:
+    - binary: orderly
+      subcommands: [market-seed, market-seed-status, market-seed-cancel]
+  network:
+    egress:
+      - "api.orderly.org"
+  filesystem:
+    denied:
+      - "~/.ssh/**"
+      - "**/.env*"
+      - "~/.claude/**"
+      - "~/.cursor/**"
+  env:
+    denied:
+      - "AWS_*"
+      - "AZURE_*"
 ---
 
 # Orderly Market Seeder

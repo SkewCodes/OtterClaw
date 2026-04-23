@@ -1,7 +1,11 @@
 ---
+id: orderly-data
 name: orderly-data
 description: Get real-time market data from Orderly Network — prices, orderbooks, funding rates, klines, symbols, recent trades. No authentication required for public data.
-version: 1.1.0
+version: 1.2.0
+publisher: "@orderly-network"
+hash: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+previousVersion: 1.1.0
 author: OtterClaw
 tags: [data, market, defi, orderly]
 requires:
@@ -12,6 +16,23 @@ requires:
       command: "npm install -g @orderly.network/cli"
       bins: [orderly]
       label: "Install Orderly CLI"
+capabilities:
+  cli:
+    - binary: orderly
+      subcommands: [market-price, market-orderbook, market-trades, funding-rates, symbols, kline]
+  network:
+    egress:
+      - "api.orderly.org"
+  filesystem:
+    denied:
+      - "~/.ssh/**"
+      - "**/.env*"
+      - "~/.claude/**"
+      - "~/.cursor/**"
+  env:
+    denied:
+      - "AWS_*"
+      - "AZURE_*"
 ---
 
 # Orderly Market Data

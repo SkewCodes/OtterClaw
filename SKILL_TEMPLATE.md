@@ -1,7 +1,11 @@
 ---
+id: your-skill-name
 name: your-skill-name
 description: What your skill does. Be specific about the capability it gives an agent.
 version: 1.0.0
+publisher: "@your-org"
+hash: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+previousVersion: 0.9.0
 author: Your Name / Handle
 tags: [relevant, tags]
 requires:
@@ -12,6 +16,23 @@ requires:
       command: "npm install -g @orderly.network/cli"
       bins: [orderly]
       label: "Install Orderly CLI"
+capabilities:
+  cli:
+    - binary: orderly
+      subcommands: [your-command, another-command]
+  network:
+    egress:
+      - "api.orderly.org"
+  filesystem:
+    denied:
+      - "~/.ssh/**"
+      - "**/.env*"
+      - "~/.claude/**"
+      - "~/.cursor/**"
+  env:
+    denied:
+      - "AWS_*"
+      - "AZURE_*"
 ---
 
 # Your Skill Name
