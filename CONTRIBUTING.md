@@ -128,11 +128,23 @@ capabilities:
       - "AZURE_*"
 ```
 
-### Deny-by-Default and Migration Timeline
+### Deny-by-Default (Enforced)
 
-- **Now:** Skills without a `capabilities` block emit a validation warning and run in deny-by-default mode (all CLI/network/fs/env access blocked at runtime).
-- **W4 (enforcement deadline):** Skills without `capabilities` fail to load. The validator runs in `--strict` mode.
-- **New skills:** Must ship with a `capabilities` block from day one.
+- Skills without a `capabilities` block **fail to load at runtime** and **fail validation**. There is no grace period.
+- All ten internal skills have been migrated. New skills must ship with a `capabilities` block from day one.
+- The `--strict` flag on the validator is still accepted but no longer changes behavior — missing capabilities is always an error.
+
+### No Direct `child_process` Imports
+
+Skills must never import `child_process` (or `node:child_process`) directly. All CLI invocation goes through `runtime.exec()`, which enforces capability checks and reports to SecClaw.
+
+An ESLint rule (`otterclaw/no-direct-child-process`) enforces this for any `.js`/`.ts` files under `skills/` or `partner-skills/`. Code blocks inside `SKILL.md` are covered by `audit-capabilities.js`.
+
+Run lint locally:
+
+```bash
+npm run lint
+```
 
 ### Privileged Capability Tags
 
@@ -182,9 +194,11 @@ After bumping, add an entry to [CHANGELOG.md](CHANGELOG.md) with the skill name,
 All SKILL.md files are validated automatically on pull requests:
 
 - **Schema check** — YAML frontmatter is validated against `schema/skill.schema.json`
-- **Capability check** — structured `capabilities` block is validated (warning now, error after W4)
+- **Capability check** — structured `capabilities` block is required (missing = error)
 - **Body check** — markdown body must contain at least one `##` heading and meaningful content
 - **Version check** — modified skills must have a bumped `version` field
+- **Lint** — ESLint checks for banned `child_process` imports in skill code
+- **Bundle manifest** — generated and uploaded as a CI artifact
 
 Run validation locally before submitting:
 
@@ -209,9 +223,33 @@ cd scripts
 node audit-capabilities.js
 ```
 
+## Bundle Manifest
+
+At release time, a bundle manifest aggregating all skills, their content hashes, and the union of capabilities is generated:
+
+```bash
+cd scripts
+node generate-bundle-manifest.js
+```
+
+This writes `bundle-manifest.json` to the repo root (gitignored — it is a build artifact). SecClaw's DependencyAttestor can verify bundle manifests at deploy time.
+
+## Capability Change Detection
+
+To detect capability expansions between the current skills and a prior baseline:
+
+```bash
+cd scripts
+node diff-capabilities.js
+```
+
+This compares current `SKILL.md` capabilities against the most recent `bundle-manifest.json`. It flags added CLI binaries, new egress endpoints, new filesystem paths, and new env reads. Partner skills with expanded capabilities are marked as requiring a co-signer.
+
+Use `--baseline <path>` to compare against a specific manifest, or `--json` for machine-readable output.
+
 ## What Happens After You Submit
 
-- Your PR is validated by CI (schema, body, capability audit, TypeScript typecheck, version bump)
+- Your PR is validated by CI (schema, body, capability audit, lint, TypeScript typecheck, bundle manifest, version bump)
 - If the file is valid and pricing is declared (for 402 skills), it gets merged
 - Your skill appears in the OtterClaw directory
 - No approval committee. The market decides what's good.

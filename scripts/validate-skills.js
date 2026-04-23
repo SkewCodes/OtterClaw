@@ -63,11 +63,7 @@ function validateCapabilities(frontmatter, rel) {
   const errors = [];
 
   if (!frontmatter.capabilities) {
-    if (strict) {
-      errors.push(`${rel}: Missing capabilities block (--strict mode rejects skills without declared capabilities).`);
-    } else {
-      warnings.push(`${rel}: No capabilities block. Skill will run in deny-by-default mode. Add capabilities before the enforcement deadline.`);
-    }
+    errors.push(`${rel}: Missing capabilities block. All skills must declare capabilities (deny-by-default enforced).`);
     return { warnings, errors };
   }
 
