@@ -45,39 +45,42 @@ Each is independently useful. A builder can take just `listing-scout` and pipe i
 otterclaw/
 ├── .github/
 │   └── workflows/
-│       └── validate-skills.yml    # CI — schema, body, capability audit, typecheck, version bump
+│       └── validate-skills.yml       # CI — schema, lint, capability audit, typecheck, bundle, version bump
 ├── schema/
-│   └── skill.schema.json          # Formal JSON Schema for SKILL.md frontmatter (inc. capabilities)
+│   └── skill.schema.json             # Formal JSON Schema for SKILL.md frontmatter (inc. capabilities)
 ├── scripts/
-│   ├── package.json               # Validator dependencies (ajv, js-yaml)
-│   ├── validate-skills.js         # Validates all SKILL.md files
-│   └── audit-capabilities.js      # Scans skills and proposes capability blocks
-├── src/                           # Skill runtime (TypeScript)
+│   ├── package.json                  # Script dependencies (ajv, js-yaml)
+│   ├── validate-skills.js            # Validates all SKILL.md files
+│   ├── audit-capabilities.js         # Scans skills and proposes capability blocks
+│   ├── generate-bundle-manifest.js   # Generates bundle-manifest.json (aggregate attestation)
+│   └── diff-capabilities.js          # Diffs capabilities against prior bundle baseline
+├── src/                              # Skill runtime (TypeScript)
 │   ├── schema/
-│   │   └── skill-frontmatter.ts   # Types + capability validation logic
+│   │   └── skill-frontmatter.ts      # Types + capability validation logic
 │   ├── runtime/
-│   │   └── exec.ts                # Sandboxed exec API — SecClaw-gated CLI invocation
+│   │   └── exec.ts                   # Sandboxed exec API — SecClaw-gated CLI invocation
 │   ├── events/
-│   │   └── secclaw-bridge.ts      # Event stream to SecClaw daemon
-│   └── index.ts                   # Barrel exports
-├── skills/                        # Core Orderly skills
-│   ├── orderly-onboarding/        # Account setup
-│   ├── orderly-trader/            # Perps trading
-│   ├── orderly-data/              # Market data
-│   ├── orderly-swap/              # Token swaps
-│   ├── orderly-vault/             # OmniVault yield
-│   ├── orderly-402/               # 402 payments
-│   ├── orderly-dex-builder/       # Launch a DEX via Orderly ONE
-│   ├── orderly-list-market/       # Permissionless market listing
-│   ├── orderly-market-seeder/     # Bootstrap liquidity on new markets
-│   └── orderly-listing-scout/     # Discover listing candidates
-├── partner-skills/                # Third-party builder skills
-├── package.json                   # Runtime dependencies + TypeScript build
-├── tsconfig.json                  # TypeScript config for src/
-├── CHANGELOG.md                   # Version history for all skills
-├── CONTRIBUTING.md                # How to submit a skill
-├── SKILL_TEMPLATE.md              # Template for new skills
-└── SKILL_TEMPLATE_402.md          # Template for 402-gated skills
+│   │   └── secclaw-bridge.ts         # Event stream to SecClaw daemon
+│   └── index.ts                      # Barrel exports
+├── skills/                           # Core Orderly skills
+│   ├── orderly-onboarding/           # Account setup
+│   ├── orderly-trader/               # Perps trading
+│   ├── orderly-data/                 # Market data
+│   ├── orderly-swap/                 # Token swaps
+│   ├── orderly-vault/                # OmniVault yield
+│   ├── orderly-402/                  # 402 payments
+│   ├── orderly-dex-builder/          # Launch a DEX via Orderly ONE
+│   ├── orderly-list-market/          # Permissionless market listing
+│   ├── orderly-market-seeder/        # Bootstrap liquidity on new markets
+│   └── orderly-listing-scout/        # Discover listing candidates
+├── partner-skills/                   # Third-party builder skills
+├── eslint.config.js                  # ESLint — bans direct child_process imports in skills
+├── package.json                      # Runtime dependencies + TypeScript build
+├── tsconfig.json                     # TypeScript config for src/
+├── CHANGELOG.md                      # Version history for all skills
+├── CONTRIBUTING.md                   # How to submit a skill
+├── SKILL_TEMPLATE.md                 # Template for new skills
+└── SKILL_TEMPLATE_402.md             # Template for 402-gated skills
 ```
 
 GitHub is the backend. Skills are files. Builders submit PRs. The runtime gates all CLI/network/filesystem/env access through declared capabilities and reports to SecClaw.
@@ -112,7 +115,7 @@ Want to publish a skill for the Orderly ecosystem? Gate it with 402 to earn reve
 2. Add your skill to `partner-skills/your-skill-name/SKILL.md`
 3. Open a PR — see [CONTRIBUTING.md](CONTRIBUTING.md) for details
 
-PRs that modify skill files, schema, scripts, or source are validated automatically by CI (schema check, body check, capability audit, TypeScript typecheck, version bump check).
+PRs that modify skill files, schema, scripts, or source are validated automatically by CI (schema check, lint, capability audit, TypeScript typecheck, bundle manifest, version bump check).
 
 ## Validation
 

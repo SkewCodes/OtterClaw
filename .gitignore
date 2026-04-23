@@ -1,5 +1,3 @@
 node_modules/
 dist/
-*.tsbuildinfo
-package-lock.json
-scripts/package-lock.json
+bundle-manifest.json

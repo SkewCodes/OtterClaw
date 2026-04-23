@@ -4,6 +4,37 @@ All notable changes to OtterClaw skills are documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Each entry includes the skill name, version, and what changed.
 
+## 2026-04-25
+
+### P2 Hardening
+
+#### ESLint Rule
+- Added `eslint.config.js` with `otterclaw/no-direct-child-process` rule — bans direct `child_process` imports in skill code; all CLI invocation must use `runtime.exec()`
+- Added ESLint as a devDependency and `lint` script to root `package.json`
+- Added `lint` job to CI workflow
+
+#### Bundle Manifest
+- Added `scripts/generate-bundle-manifest.js` — aggregates all skills into `bundle-manifest.json` with per-skill hashes and union of capabilities
+- Added `generate-bundle` script to `scripts/package.json`
+- Added `bundle-manifest` CI job (generates and uploads as artifact)
+- Added `.gitignore` (excludes `node_modules/`, `dist/`, `bundle-manifest.json`)
+
+#### Capability-Diff and Quarantine Wiring
+- Added `scripts/diff-capabilities.js` — compares current skill capabilities against a prior `bundle-manifest.json` baseline; flags expansions and marks partner skills as requiring co-signer
+- Added `diff-capabilities` script to `scripts/package.json`
+- Added `skill.capability.expanded` to `SecClawEventType` union in `src/events/secclaw-bridge.ts`
+- Added `diffCapabilities()` function and `CapabilityDelta` type to `src/runtime/exec.ts`
+- Runtime now emits `skill.capability.expanded` event at skill load time when `previousCapabilities` are provided and capabilities have expanded
+
+#### Enforcement Switch
+- `createSkillRuntime` now throws eagerly when a skill has no `capabilities` block (previously blocked lazily per call)
+- `validate-skills.js` now always errors on missing capabilities (previously only in `--strict` mode)
+
+#### Documentation
+- Updated `CONTRIBUTING.md` — enforcement timeline (now enforced), ESLint rule docs, bundle manifest docs, capability diff docs, updated validation checklist
+- Updated `README.md` — architecture tree updated with new scripts
+- Updated `CHANGELOG.md` — this entry
+
 ## 2026-04-24
 
 ### Skill Runtime Hardening — SecClaw Coordination (all skills bumped)

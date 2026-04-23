@@ -3,7 +3,9 @@
   "private": true,
   "description": "Validation tooling for OtterClaw SKILL.md files.",
   "scripts": {
-    "validate": "node validate-skills.js"
+    "validate": "node validate-skills.js",
+    "generate-bundle": "node generate-bundle-manifest.js",
+    "diff-capabilities": "node diff-capabilities.js"
   },
   "dependencies": {
     "ajv": "^8.17.1",

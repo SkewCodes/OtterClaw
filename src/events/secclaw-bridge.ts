@@ -9,7 +9,8 @@ export type SecClawEventType =
   | "skill.cli.requested"
   | "skill.cli.blocked"
   | "skill.network.requested"
-  | "skill.capability.violation";
+  | "skill.capability.violation"
+  | "skill.capability.expanded";
 
 export interface SecClawEvent {
   type: SecClawEventType;

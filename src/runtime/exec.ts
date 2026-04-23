@@ -38,20 +38,89 @@ export interface SkillRuntime {
   getEnv(name: string): string | undefined;
 }
 
+export interface CapabilityDelta {
+  addedCliBinaries: string[];
+  addedEgress: string[];
+  addedFsRead: string[];
+  addedFsWrite: string[];
+  addedEnvReads: string[];
+  expanded: boolean;
+}
+
 interface SkillRuntimeDeps {
   skill: SkillFrontmatter;
   bridge: SecClawBridge;
   /** SecClaw DependencyAttestor endpoint for package-manager calls. */
   dependencyAttestorUrl?: string;
+  /**
+   * Capabilities from the previous version of this skill. When provided and
+   * the current version has expanded capabilities, a `skill.capability.expanded`
+   * event is emitted to SecClaw at runtime creation time.
+   */
+  previousCapabilities?: SkillCapabilities;
 }
 
 function blocked(reason: string): ExecResult {
   return { stdout: "", stderr: "", exitCode: 1, blocked: true, reason };
 }
 
+function setDiff(current: string[] | undefined, baseline: string[] | undefined): string[] {
+  if (!current) return [];
+  const base = new Set(baseline ?? []);
+  return current.filter((item) => !base.has(item));
+}
+
+export function diffCapabilities(
+  current: SkillCapabilities | undefined,
+  baseline: SkillCapabilities | undefined,
+): CapabilityDelta {
+  const addedCliBinaries = setDiff(
+    current?.cli?.map((c) => c.binary),
+    baseline?.cli?.map((c) => c.binary),
+  );
+  const addedEgress = setDiff(current?.network?.egress, baseline?.network?.egress);
+  const addedFsRead = setDiff(current?.filesystem?.read, baseline?.filesystem?.read);
+  const addedFsWrite = setDiff(current?.filesystem?.write, baseline?.filesystem?.write);
+  const addedEnvReads = setDiff(current?.env?.reads, baseline?.env?.reads);
+
+  return {
+    addedCliBinaries,
+    addedEgress,
+    addedFsRead,
+    addedFsWrite,
+    addedEnvReads,
+    expanded:
+      addedCliBinaries.length > 0 ||
+      addedEgress.length > 0 ||
+      addedFsRead.length > 0 ||
+      addedFsWrite.length > 0 ||
+      addedEnvReads.length > 0,
+  };
+}
+
 export function createSkillRuntime(deps: SkillRuntimeDeps): SkillRuntime {
   const { skill, bridge } = deps;
-  const caps: SkillCapabilities | undefined = skill.capabilities;
+
+  if (!skill.capabilities) {
+    throw new Error(
+      `Skill "${skill.name}" has no capabilities block. ` +
+      `All skills must declare capabilities (deny-by-default).`,
+    );
+  }
+
+  const caps: SkillCapabilities = skill.capabilities;
+
+  if (deps.previousCapabilities) {
+    const delta = diffCapabilities(caps, deps.previousCapabilities);
+    if (delta.expanded) {
+      bridge.emit({
+        type: "skill.capability.expanded",
+        skillId: skill.id ?? skill.name,
+        timestamp: Date.now(),
+        payload: { previousVersion: skill.previousVersion, delta },
+      });
+    }
+  }
 
   return {
     async exec(binary, args, options) {
@@ -63,19 +132,6 @@ export function createSkillRuntime(deps: SkillRuntimeDeps): SkillRuntime {
         timestamp: Date.now(),
         payload: { binary, args },
       });
-
-      if (!caps) {
-        const result = blocked(
-          "Skill has no capabilities block — deny-by-default.",
-        );
-        bridge.emit({
-          type: "skill.cli.blocked",
-          skillId: skill.id ?? skill.name,
-          timestamp: Date.now(),
-          payload: { binary, args, reason: result.reason! },
-        });
-        return result;
-      }
 
       const cap = findCliCapability(caps, binary, subcommand);
       if (!cap) {

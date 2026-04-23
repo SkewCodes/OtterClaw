@@ -20,8 +20,8 @@ export {
   isEnvDenied,
 } from "./schema/skill-frontmatter.js";
 
-export type { ExecOptions, ExecResult, SkillRuntime } from "./runtime/exec.js";
-export { createSkillRuntime } from "./runtime/exec.js";
+export type { ExecOptions, ExecResult, SkillRuntime, CapabilityDelta } from "./runtime/exec.js";
+export { createSkillRuntime, diffCapabilities } from "./runtime/exec.js";
 
 export type { SecClawEventType, SecClawEvent, SecClawBridgeConfig, TransportKind } from "./events/secclaw-bridge.js";
 export { SecClawBridge } from "./events/secclaw-bridge.js";
