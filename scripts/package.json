@@ -1,6 +1,7 @@
 {
   "name": "otterclaw-scripts",
   "private": true,
+  "type": "commonjs",
   "description": "Validation tooling for OtterClaw SKILL.md files.",
   "scripts": {
     "validate": "node validate-skills.js",

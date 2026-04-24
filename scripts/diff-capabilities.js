@@ -132,8 +132,6 @@ function run() {
     baselineById.set(skill.id, skill);
   }
 
-  const baselineAgg = baseline.aggregatedCapabilities || {};
-
   const files = findSkillFiles();
   const results = [];
   let expansions = 0;
@@ -147,11 +145,7 @@ function run() {
     const caps = fm.capabilities || {};
 
     const baseEntry = baselineById.get(id);
-    const baseCaps = baseEntry?.capabilities
-      ? baseEntry.capabilities
-      : baseEntry
-        ? reconstructBaselineCaps(baselineAgg)
-        : {};
+    const baseCaps = baseEntry?.capabilities || {};
 
     const delta = diffCapabilities(caps, baseCaps);
     const isNew = !baseEntry;
@@ -197,29 +191,6 @@ function run() {
   }
 
   process.exit(expansions > 0 ? 1 : 0);
-}
-
-/**
- * Reconstruct per-skill baseline capabilities from the aggregate manifest.
- * The aggregate stores the union — individual per-skill caps aren't preserved
- * in the manifest. For diffing purposes we treat the aggregate as the baseline
- * for all skills, which means the diff is conservative: it only flags truly
- * new capabilities that weren't in *any* prior skill.
- */
-function reconstructBaselineCaps(agg) {
-  return {
-    cli: (agg.cli || []).map((binary) => ({ binary, subcommands: [] })),
-    network: { egress: agg.network?.egress || [] },
-    filesystem: {
-      read: agg.filesystem?.read || [],
-      write: agg.filesystem?.write || [],
-      denied: agg.filesystem?.denied || [],
-    },
-    env: {
-      reads: agg.env?.reads || [],
-      denied: agg.env?.denied || [],
-    },
-  };
 }
 
 run();

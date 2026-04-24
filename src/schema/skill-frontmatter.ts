@@ -1,4 +1,5 @@
 import { normalize } from "node:path";
+import picomatch from "picomatch";
 
 export interface CliCapability {
   binary: string;
@@ -150,19 +151,26 @@ function matchesAnyWildcard(
 }
 
 /**
- * Minimal glob matcher supporting * and ** segments.
- * Not a full glob implementation — covers the patterns used in capability manifests.
- * Normalizes backslashes to forward slashes for Windows compatibility.
+ * Glob matcher for capability manifest patterns, backed by picomatch.
+ *
+ * Supports:
+ *   *    — matches any characters except /
+ *   **   — matches any characters including /
+ *   ?    — matches a single character except /
+ *   [..] — character class matching
+ *
+ * All backslashes are normalized to / before matching.
+ * Dot files are matched (dot: true).
  * Rejects any path containing ".." traversal components.
+ *
+ * Tested patterns (from current skills):
+ *   ~/.ssh/**        — matches ~/.ssh/id_rsa, ~/.ssh/config
+ *   **\/.env*        — matches .env, .env.local, sub/.env.prod
+ *   ~/.claude/**     — matches ~/.claude/config.json
  */
 function globMatch(pattern: string, value: string): boolean {
   const normalized = normalize(value).replace(/\\/g, "/");
   if (/(?:^|[\\/])\.\.(?:[\\/]|$)/.test(normalized)) return false;
   const normalizedPattern = normalize(pattern).replace(/\\/g, "/");
-  const regexStr = normalizedPattern
-    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-    .replace(/\*\*/g, "\0")
-    .replace(/\*/g, "[^/]*")
-    .replace(/\0/g, ".*");
-  return new RegExp(`^${regexStr}$`).test(normalized);
+  return picomatch(normalizedPattern, { dot: true })(normalized);
 }

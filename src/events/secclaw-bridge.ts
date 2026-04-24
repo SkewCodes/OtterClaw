@@ -10,6 +10,7 @@ export type SecClawEventType =
   | "skill.invocation.started"
   | "skill.cli.requested"
   | "skill.cli.blocked"
+  | "skill.cli.error"
   | "skill.network.requested"
   | "skill.capability.violation"
   | "skill.capability.expanded";

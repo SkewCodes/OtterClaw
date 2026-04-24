@@ -130,6 +130,38 @@ describe("isEnvReadAllowed", () => {
   });
 });
 
+describe("globMatch coverage (via isFileReadAllowed)", () => {
+  it("matches ~/.ssh/** for nested paths", () => {
+    const caps: SkillCapabilities = { filesystem: { read: ["~/.ssh/**"] } };
+    assert.ok(isFileReadAllowed(caps, "~/.ssh/id_rsa"));
+    assert.ok(isFileReadAllowed(caps, "~/.ssh/config"));
+    assert.ok(!isFileReadAllowed(caps, "~/.aws/credentials"));
+  });
+
+  it("matches **/.env* for dotenv files at any depth", () => {
+    const caps: SkillCapabilities = { filesystem: { read: ["**/.env*"] } };
+    assert.ok(isFileReadAllowed(caps, ".env"));
+    assert.ok(isFileReadAllowed(caps, ".env.local"));
+    assert.ok(isFileReadAllowed(caps, "app/.env.production"));
+  });
+
+  it("matches ~/.claude/** for nested claude paths", () => {
+    const caps: SkillCapabilities = { filesystem: { read: ["~/.claude/**"] } };
+    assert.ok(isFileReadAllowed(caps, "~/.claude/config.json"));
+    assert.ok(!isFileReadAllowed(caps, "~/.cursor/config.json"));
+  });
+
+  it("denies **/.env* patterns correctly", () => {
+    const caps: SkillCapabilities = {
+      filesystem: { read: ["./**"], denied: ["**/.env*"] },
+    };
+    assert.ok(!isFileReadAllowed(caps, "./.env"));
+    assert.ok(!isFileReadAllowed(caps, "./.env.local"));
+    assert.ok(!isFileReadAllowed(caps, "./sub/.env.production"));
+    assert.ok(isFileReadAllowed(caps, "./config/settings.json"));
+  });
+});
+
 describe("isEnvDenied", () => {
   const caps: SkillCapabilities = {
     env: { denied: ["AWS_*", "AZURE_*"] },

@@ -1,8 +1,13 @@
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { mkdtempSync, writeFileSync, mkdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { createSkillRuntime, diffCapabilities } from "../runtime/exec.js";
 import type { SkillRuntime, CapabilityDelta } from "../runtime/exec.js";
 import { SecClawBridge } from "../events/secclaw-bridge.js";
+import type { SecClawEvent } from "../events/secclaw-bridge.js";
 import type { SkillFrontmatter, SkillCapabilities } from "../schema/skill-frontmatter.js";
 
 function makeBridge(): SecClawBridge {
@@ -10,6 +15,7 @@ function makeBridge(): SecClawBridge {
     transport: "http",
     endpoint: "http://127.0.0.1:9999/events",
     secret: "test-secret",
+    manualFlush: true,
     onError: () => {},
   });
 }
@@ -197,5 +203,107 @@ describe("diffCapabilities", () => {
     };
     const delta = diffCapabilities(caps, caps);
     assert.ok(!delta.expanded);
+  });
+});
+
+describe("sidecar hash-at-load verification", () => {
+  it("throws when sidecar hash does not match file content", () => {
+    const bridge = makeBridge();
+    const tmp = mkdtempSync(join(tmpdir(), "oc-test-"));
+    const skillContent = "# Test SKILL\nsome content";
+    const skillPath = join(tmp, "SKILL.md");
+    writeFileSync(skillPath, skillContent);
+
+    const secclawDir = join(tmp, ".secclaw");
+    mkdirSync(secclawDir);
+    writeFileSync(
+      join(secclawDir, "skill-hashes.json"),
+      JSON.stringify({ "test-skill": "sha256:" + "f".repeat(64) }),
+    );
+
+    const skill = makeSkill();
+    assert.throws(
+      () => createSkillRuntime({ skill, bridge, skillFilePath: skillPath, secclawDir }),
+      /SecClaw sidecar hash mismatch/,
+    );
+  });
+
+  it("passes when sidecar hash matches file content", () => {
+    const bridge = makeBridge();
+    const tmp = mkdtempSync(join(tmpdir(), "oc-test-"));
+    const skillContent = "# Test SKILL\nsome content";
+    const skillPath = join(tmp, "SKILL.md");
+    writeFileSync(skillPath, skillContent);
+
+    const hash = "sha256:" + createHash("sha256").update(skillContent).digest("hex");
+    const secclawDir = join(tmp, ".secclaw");
+    mkdirSync(secclawDir);
+    writeFileSync(
+      join(secclawDir, "skill-hashes.json"),
+      JSON.stringify({ "test-skill": hash }),
+    );
+
+    const skill = makeSkill();
+    const runtime = createSkillRuntime({ skill, bridge, skillFilePath: skillPath, secclawDir });
+    assert.ok(runtime);
+  });
+
+  it("emits warning and continues when sidecar is missing", () => {
+    const bridge = makeBridge();
+    const skill = makeSkill();
+    const runtime = createSkillRuntime({
+      skill,
+      bridge,
+      skillFilePath: "/nonexistent/SKILL.md",
+      secclawDir: "/nonexistent/.secclaw",
+    });
+    assert.ok(runtime);
+
+    const events = bridge.drain();
+    const violation = events.find(
+      (e: SecClawEvent) =>
+        e.type === "skill.capability.violation" &&
+        (e.payload as Record<string, unknown>).subkind === "hash-at-load",
+    );
+    assert.ok(violation);
+  });
+});
+
+describe("filterEnv hardening", () => {
+  it("excludes undeclared env vars like DATABASE_URL from child env", () => {
+    const bridge = makeBridge();
+    const runtime = createSkillRuntime({ skill: makeSkill(), bridge });
+    process.env.DATABASE_URL = "postgres://secret";
+    assert.equal(runtime.getEnv("DATABASE_URL"), undefined);
+    delete process.env.DATABASE_URL;
+  });
+
+  it("excludes NODE_PATH from child env", () => {
+    const bridge = makeBridge();
+    const runtime = createSkillRuntime({ skill: makeSkill(), bridge });
+    process.env.NODE_PATH = "/malicious/modules";
+    assert.equal(runtime.getEnv("NODE_PATH"), undefined);
+    delete process.env.NODE_PATH;
+  });
+});
+
+describe("skill.cli.error event", () => {
+  it("emits skill.cli.error on exec failure", async () => {
+    const bridge = makeBridge();
+    const skill = makeSkill({
+      capabilities: {
+        cli: [{ binary: "nonexistent-binary-xyz", subcommands: ["run"] }],
+      },
+    });
+    const runtime = createSkillRuntime({ skill, bridge });
+    const result = await runtime.exec("nonexistent-binary-xyz", ["run"]);
+
+    assert.equal(result.blocked, false);
+    assert.notEqual(result.exitCode, 0);
+
+    const events = bridge.drain();
+    const errorEvent = events.find((e: SecClawEvent) => e.type === "skill.cli.error");
+    assert.ok(errorEvent, "Expected a skill.cli.error event");
+    assert.equal((errorEvent!.payload as Record<string, unknown>).binary, "nonexistent-binary-xyz");
   });
 });

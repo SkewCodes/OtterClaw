@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import { readFile as fsReadFile, writeFile as fsWriteFile, realpath, lstat } from "node:fs/promises";
-import { resolve as pathResolve, basename as pathBasename } from "node:path";
+import { resolve as pathResolve, basename as pathBasename, join as pathJoin } from "node:path";
 import type {
   SkillCapabilities,
   SkillFrontmatter,
@@ -56,6 +56,14 @@ interface SkillRuntimeDeps {
   dependencyAttestorUrl?: string;
   /** Absolute path to the SKILL.md file for integrity verification. */
   skillFilePath?: string;
+  /**
+   * Directory containing `.secclaw/skill-hashes.json`. When provided,
+   * the runtime verifies the skill file hash against SecClaw's last-known
+   * hash at load time, closing the TOCTOU window between scan and load.
+   */
+  secclawDir?: string;
+  /** Maximum response body size in bytes for the fetch wrapper. Default 10 MB. */
+  maxResponseBytes?: number;
   /**
    * Capabilities from the previous version of this skill. When provided and
    * the current version has expanded capabilities, a `skill.capability.expanded`
@@ -173,6 +181,27 @@ function resolveAllBinaries(caps: SkillCapabilities): Map<string, string> {
 }
 
 const ZERO_HASH = "sha256:" + "0".repeat(64);
+const MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
+
+function capResponseBody(res: Response, limit: number): Response {
+  if (!res.body) return res;
+  let total = 0;
+  const transform = new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      total += chunk.byteLength;
+      if (total > limit) {
+        controller.error(new Error(`Response body exceeded ${limit} bytes`));
+        return;
+      }
+      controller.enqueue(chunk);
+    },
+  });
+  return new Response(res.body.pipeThrough(transform), {
+    status: res.status,
+    statusText: res.statusText,
+    headers: res.headers,
+  });
+}
 
 export function createSkillRuntime(deps: SkillRuntimeDeps): SkillRuntime {
   const { skill, bridge } = deps;
@@ -193,6 +222,50 @@ export function createSkillRuntime(deps: SkillRuntimeDeps): SkillRuntime {
       throw new Error(
         `Skill "${skill.name}" integrity check failed — content hash mismatch`,
       );
+    }
+  }
+
+  if (deps.secclawDir && deps.skillFilePath) {
+    const skillId = skill.id ?? skill.name;
+    const sidecarPath = pathJoin(deps.secclawDir, "skill-hashes.json");
+    try {
+      const sidecar: Record<string, string> = JSON.parse(
+        readFileSync(sidecarPath, "utf-8"),
+      );
+      const expectedHash = sidecar[skillId];
+      if (expectedHash) {
+        const content = readFileSync(deps.skillFilePath, "utf-8");
+        const actual = "sha256:" + createHash("sha256").update(content).digest("hex");
+        if (actual !== expectedHash) {
+          bridge.emit({
+            type: "skill.capability.violation",
+            skillId,
+            timestamp: Date.now(),
+            payload: {
+              kind: "integrity",
+              subkind: "hash-at-load",
+              detail: `SecClaw sidecar hash mismatch: expected ${expectedHash}, actual ${actual}`,
+            },
+          });
+          throw new Error(
+            `Skill "${skill.name}" integrity check failed — SecClaw sidecar hash mismatch`,
+          );
+        }
+      }
+    } catch (err) {
+      if (err instanceof Error && err.message.includes("sidecar hash mismatch")) {
+        throw err;
+      }
+      bridge.emit({
+        type: "skill.capability.violation",
+        skillId,
+        timestamp: Date.now(),
+        payload: {
+          kind: "integrity",
+          subkind: "hash-at-load",
+          detail: `SecClaw sidecar unreadable: ${sidecarPath}`,
+        },
+      });
     }
   }
 
@@ -321,6 +394,18 @@ export function createSkillRuntime(deps: SkillRuntimeDeps): SkillRuntime {
           (err, stdout, stderr) => {
             let exitCode = 0;
             if (err) {
+              bridge.emit({
+                type: "skill.cli.error",
+                skillId: skill.id ?? skill.name,
+                timestamp: Date.now(),
+                payload: {
+                  binary,
+                  args,
+                  errorCode: err.code,
+                  errorMessage: err.message?.slice(0, 200),
+                  signal: err.signal,
+                },
+              });
               if (typeof err.code === "number") exitCode = err.code;
               else if (err.signal) exitCode = 128;
               else exitCode = 1;
@@ -426,7 +511,7 @@ export function createSkillRuntime(deps: SkillRuntimeDeps): SkillRuntime {
         );
       }
 
-      return res;
+      return capResponseBody(res, deps.maxResponseBytes ?? MAX_RESPONSE_BYTES);
     },
 
     async readFile(path) {
@@ -478,7 +563,7 @@ export function createSkillRuntime(deps: SkillRuntimeDeps): SkillRuntime {
 const BASE_ENV_ALLOWLIST = new Set([
   "PATH", "HOME", "SHELL", "TERM", "LANG", "LC_ALL",
   "USER", "LOGNAME", "TMPDIR", "TMP", "TEMP",
-  "NODE_ENV", "NODE_PATH",
+  "NODE_ENV", "TZ",
 ]);
 
 /**

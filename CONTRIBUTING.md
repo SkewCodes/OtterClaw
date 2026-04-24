@@ -189,6 +189,10 @@ After bumping, add an entry to [CHANGELOG.md](CHANGELOG.md) with the skill name,
 - **Be honest** — describe what your skill actually does. Agents that use bad skills stop using them.
 - **Test it** — verify your skill works with a local agent before submitting.
 
+## Module Systems
+
+The root package (`src/`) uses ESM (`"type": "module"` in the root `package.json`). The `scripts/` directory uses CommonJS (`"type": "commonjs"` in `scripts/package.json`). Do not use `import` syntax in files under `scripts/`; use `require()` instead.
+
 ## Validation
 
 All SKILL.md files are validated automatically on pull requests:
