@@ -147,9 +147,11 @@ function run() {
     const caps = fm.capabilities || {};
 
     const baseEntry = baselineById.get(id);
-    const baseCaps = baseEntry
-      ? reconstructBaselineCaps(baselineAgg, id, baseline.skills)
-      : {};
+    const baseCaps = baseEntry?.capabilities
+      ? baseEntry.capabilities
+      : baseEntry
+        ? reconstructBaselineCaps(baselineAgg)
+        : {};
 
     const delta = diffCapabilities(caps, baseCaps);
     const isNew = !baseEntry;

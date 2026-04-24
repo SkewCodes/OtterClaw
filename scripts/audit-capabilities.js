@@ -57,6 +57,56 @@ const KNOWN_BINARIES = new Set([
   "gh", "git", "curl", "wget", "docker", "node",
 ]);
 
+function extractInlineCode(content) {
+  const spans = [];
+  const re = /`([^`]+)`/g;
+  let m;
+  while ((m = re.exec(content)) !== null) {
+    spans.push(m[1]);
+  }
+  return spans;
+}
+
+function extractProseCommands(content) {
+  const commands = [];
+  const lines = content.split("\n");
+  let inFence = false;
+  for (const line of lines) {
+    if (line.startsWith("```")) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+    for (const binary of KNOWN_BINARIES) {
+      const re = new RegExp(`\\b${binary}\\s+\\S+`, "g");
+      let m;
+      while ((m = re.exec(line)) !== null) {
+        commands.push(m[0]);
+      }
+    }
+  }
+  return commands;
+}
+
+const BANNED_IMPORTS = ["child_process", "node:child_process"];
+
+function checkForBannedImports(codeBlocks) {
+  const errors = [];
+  for (const block of codeBlocks) {
+    for (const mod of BANNED_IMPORTS) {
+      if (
+        block.includes(`require('${mod}')`) ||
+        block.includes(`require("${mod}")`) ||
+        block.includes(`from '${mod}'`) ||
+        block.includes(`from "${mod}"`)
+      ) {
+        errors.push(`Code block contains banned import: ${mod}`);
+      }
+    }
+  }
+  return errors;
+}
+
 function extractBinaries(codeBlocks) {
   const bins = new Map();
 
@@ -119,10 +169,19 @@ function extractFilePaths(content) {
 
 function buildProposal(content) {
   const codeBlocks = extractCodeBlocks(content);
-  const bins = extractBinaries(codeBlocks);
+  const inlineCode = extractInlineCode(content);
+  const proseCommands = extractProseCommands(content);
+
+  const allCodeSources = [...codeBlocks, ...inlineCode, ...proseCommands];
+  const bins = extractBinaries(allCodeSources);
   const hostnames = extractUrls(content);
   const envVars = extractEnvVars(content);
   const filePaths = extractFilePaths(content);
+
+  const importErrors = checkForBannedImports(codeBlocks);
+  for (const err of importErrors) {
+    console.warn(`  WARN: ${err}`);
+  }
 
   const proposal = {};
 

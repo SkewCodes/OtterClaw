@@ -92,6 +92,7 @@ function run() {
       version: fm.version || "0.0.0",
       hash: hashContent(content),
       previousHash: fm.previousVersion || null,
+      capabilities: fm.capabilities || null,
     };
     skills.push(skillEntry);
 
@@ -135,9 +136,17 @@ function run() {
     },
   };
 
-  fs.writeFileSync(outPath, JSON.stringify(manifest, null, 2) + "\n");
+  const manifestJson = JSON.stringify(manifest, null, 2);
+  fs.writeFileSync(outPath, manifestJson + "\n");
   console.log(`Bundle manifest written to ${outPath}`);
   console.log(`  ${skills.length} skill(s), bundle ${bundleId} v${rootPkg.version}`);
+
+  const signingKey = process.env.OTTERCLAW_SIGNING_KEY;
+  if (signingKey) {
+    const hmac = crypto.createHmac("sha256", signingKey).update(manifestJson).digest("hex");
+    fs.writeFileSync(outPath + ".sig", hmac + "\n");
+    console.log(`  Signature written to ${outPath}.sig`);
+  }
 }
 
 run();

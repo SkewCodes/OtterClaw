@@ -32,9 +32,9 @@ jobs:
         working-directory: scripts
         run: npm install
 
-      - name: Run skill validation
+      - name: Run skill validation (strict)
         working-directory: scripts
-        run: node validate-skills.js
+        run: node validate-skills.js --strict
 
   capability-audit:
     name: Audit declared capabilities
@@ -94,6 +94,49 @@ jobs:
 
       - name: Typecheck
         run: npx tsc --noEmit
+
+  test:
+    name: Run tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Install tsx
+        run: npm install -D tsx
+
+      - name: Run tests
+        run: npm test
+
+  diff-capabilities:
+    name: Diff capability expansions
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        working-directory: scripts
+        run: npm install
+
+      - name: Run capability diff
+        working-directory: scripts
+        run: node diff-capabilities.js || echo "Capability expansions detected — review required"
 
   bundle-manifest:
     name: Generate bundle manifest

@@ -5,6 +5,8 @@ import type { IncomingMessage } from "node:http";
 export type SecClawEventType =
   | "skill.install.attempted"
   | "skill.install.completed"
+  | "skill.uninstall"
+  | "skill.replaced"
   | "skill.invocation.started"
   | "skill.cli.requested"
   | "skill.cli.blocked"
@@ -31,6 +33,8 @@ export interface SecClawBridgeConfig {
   bufferSize?: number;
   /** Fire-and-forget: don't await delivery. Default true. */
   async?: boolean;
+  /** If true, suppress auto-flush on emit (for testing). Default false. */
+  manualFlush?: boolean;
   /** Request timeout in ms. Default 5000. */
   timeoutMs?: number;
   /** Called when flush fails (instead of silently swallowing). */
@@ -39,28 +43,52 @@ export interface SecClawBridgeConfig {
 
 const DEFAULT_BUFFER_SIZE = 1000;
 const DEFAULT_TIMEOUT_MS = 5000;
+const MAX_ARG_DISPLAY_LENGTH = 200;
+const SECRET_PATTERNS = /\b(?:secret|password|credential)\b|_(?:token|key)\b|\bauth(?:orization|_)/i;
+
+function sanitizePayload(payload: Record<string, unknown>): Record<string, unknown> {
+  const sanitized = { ...payload };
+  if (Array.isArray(sanitized.args)) {
+    sanitized.args = (sanitized.args as unknown[]).map((arg) => {
+      const s = String(arg);
+      if (SECRET_PATTERNS.test(s)) return "[redacted]";
+      if (s.length > MAX_ARG_DISPLAY_LENGTH) return s.slice(0, MAX_ARG_DISPLAY_LENGTH) + "...";
+      return s;
+    });
+  }
+  delete sanitized.internalDetail;
+  return sanitized;
+}
 
 export class SecClawBridge {
   private config: SecClawBridgeConfig;
   private buffer: SecClawEvent[] = [];
   private connected = false;
   private flushing = false;
+  private backoffMs = 1000;
+  private readonly maxBackoffMs = 30_000;
 
   constructor(config: SecClawBridgeConfig) {
     this.config = config;
   }
 
   emit(event: SecClawEvent): void {
-    this.buffer.push(event);
+    const sanitized: SecClawEvent = {
+      ...event,
+      payload: sanitizePayload(event.payload),
+    };
+    this.buffer.push(sanitized);
     if (this.buffer.length > (this.config.bufferSize ?? DEFAULT_BUFFER_SIZE)) {
       this.buffer.shift();
     }
 
-    this.flushLoop().catch((err: unknown) => {
-      this.config.onError?.(
-        err instanceof Error ? err : new Error(String(err)),
-      );
-    });
+    if (!this.config.manualFlush) {
+      this.flushLoop().catch((err: unknown) => {
+        this.config.onError?.(
+          err instanceof Error ? err : new Error(String(err)),
+        );
+      });
+    }
   }
 
   async flush(): Promise<void> {
@@ -73,6 +101,7 @@ export class SecClawBridge {
     try {
       await this.send(batch);
       this.connected = true;
+      this.backoffMs = 1000;
     } catch (err) {
       this.connected = false;
       this.buffer.unshift(...batch);
@@ -83,13 +112,19 @@ export class SecClawBridge {
   }
 
   /**
-   * Flush in a loop until the buffer is empty. Prevents events pushed
-   * during an in-flight flush from being stranded.
+   * Flush in a loop until the buffer is empty. Uses exponential backoff
+   * on failure to avoid tight retry loops.
    */
   private async flushLoop(): Promise<void> {
     if (this.flushing) return;
     while (this.buffer.length > 0) {
-      await this.flush();
+      try {
+        await this.flush();
+      } catch {
+        await new Promise((r) => setTimeout(r, this.backoffMs));
+        this.backoffMs = Math.min(this.backoffMs * 2, this.maxBackoffMs);
+        break;
+      }
     }
   }
 

@@ -84,7 +84,8 @@
               },
               "command": {
                 "type": "string",
-                "description": "Shell command to run."
+                "pattern": "^(npm|npx|yarn|pnpm|bun|pip|pip3)\\s",
+                "description": "Install command — must start with a known package manager."
               },
               "bins": {
                 "type": "array",

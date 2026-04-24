@@ -107,6 +107,131 @@ function validateCapabilities(frontmatter, rel) {
   return { warnings, errors };
 }
 
+const KNOWN_BINARIES = new Set([
+  "orderly", "npm", "npx", "yarn", "pnpm", "bun",
+  "gh", "git", "curl", "wget", "docker", "node",
+  "python3", "python", "pip", "pip3", "ruby", "perl",
+]);
+
+function extractCodeBlocks(content) {
+  const blocks = [];
+  const re = /```[a-zA-Z]*\r?\n([\s\S]*?)```/g;
+  let m;
+  while ((m = re.exec(content)) !== null) {
+    blocks.push(m[1]);
+  }
+  return blocks;
+}
+
+function crossReferenceCapabilities(frontmatter, content, rel) {
+  const errors = [];
+  const codeBlocks = extractCodeBlocks(content);
+  const declaredBinaries = new Map();
+
+  for (const cap of frontmatter.capabilities?.cli ?? []) {
+    declaredBinaries.set(cap.binary, new Set(cap.subcommands));
+  }
+
+  for (const block of codeBlocks) {
+    const lines = block.split("\n").filter((l) => l.trim() && !l.trim().startsWith("#"));
+    for (const line of lines) {
+      const tokens = line.trim().split(/\s+/);
+      const binary = tokens[0];
+      if (!KNOWN_BINARIES.has(binary)) continue;
+
+      const subcommand = tokens[1];
+      if (!subcommand || subcommand.startsWith("-") || subcommand.startsWith("<") || subcommand.startsWith("$")) continue;
+
+      const declaredSubs = declaredBinaries.get(binary);
+      if (!declaredSubs) {
+        errors.push(`${rel}: body uses binary '${binary}' not declared in capabilities.cli`);
+      } else if (!declaredSubs.has(subcommand)) {
+        errors.push(`${rel}: body uses '${binary} ${subcommand}' not declared in capabilities.cli.subcommands`);
+      }
+    }
+  }
+
+  return errors;
+}
+
+const INTERPRETER_BINARIES = new Set(["python3", "python", "node", "ruby", "perl"]);
+const BANNED_INTERPRETER_SUBCOMMANDS = new Set(["-c", "-e", "exec", "eval"]);
+
+function validateInterpreterSubcommands(frontmatter, rel, isPartner) {
+  const errors = [];
+  const warnings = [];
+  for (const entry of frontmatter.capabilities?.cli ?? []) {
+    if (!INTERPRETER_BINARIES.has(entry.binary)) continue;
+    for (const sub of entry.subcommands ?? []) {
+      if (BANNED_INTERPRETER_SUBCOMMANDS.has(sub)) {
+        if (isPartner) {
+          errors.push(`${rel}: partner skills cannot declare ${entry.binary} ${sub} — use a script file instead`);
+        } else {
+          warnings.push(`${rel}: ${entry.binary} ${sub} is a privileged capability — requires justification`);
+        }
+      }
+    }
+  }
+  return { errors, warnings };
+}
+
+const BANNED_INSTALL_PATTERNS = [
+  /\|\s*(?:bash|sh|zsh)\b/,
+  /\bcurl\b.*\|\s*/,
+  /\bwget\b.*\|\s*/,
+  /\beval\b/,
+  /\bgit\s+clone\b/,
+  /--unsafe-perm/,
+  /\bsudo\b/,
+  /\brm\s+-rf?\b/,
+  />\s*\/(?:etc|usr|var|tmp)/,
+  /process\.env/,
+];
+
+const ALLOWED_INSTALL_BINARIES = new Set(["npm", "npx", "yarn", "pnpm", "bun", "pip", "pip3"]);
+
+const ALLOWED_INSTALL_PACKAGES = new Set([
+  "@orderly.network/cli",
+  "@orderly.network/mcp-server",
+]);
+
+function validateInstallPackages(frontmatter, rel, isPartner) {
+  const errors = [];
+  for (const step of frontmatter.requires?.install ?? []) {
+    if (!step.command) continue;
+    const match = step.command.match(/(?:npm|yarn|pnpm|bun)\s+(?:install|add|i)\s+(?:-g\s+)?(\S+)/);
+    if (match) {
+      const pkg = match[1].replace(/@[\d^~<>=.*]+$/, "");
+      if (isPartner && !ALLOWED_INSTALL_PACKAGES.has(pkg)) {
+        const declared = (frontmatter.capabilities?.cli ?? []).some(
+          (c) => (c.allowedPackages ?? []).includes(pkg),
+        );
+        if (!declared) {
+          errors.push(`${rel}: install step references undeclared package '${pkg}' — add to capabilities.cli.allowedPackages or contact core team`);
+        }
+      }
+    }
+  }
+  return errors;
+}
+
+function validateInstallCommands(frontmatter, rel) {
+  const errors = [];
+  for (const step of frontmatter.requires?.install ?? []) {
+    if (!step.command) continue;
+    for (const pattern of BANNED_INSTALL_PATTERNS) {
+      if (pattern.test(step.command)) {
+        errors.push(`${rel}: install command "${step.command}" matches banned pattern: ${pattern}`);
+      }
+    }
+    const binary = step.command.trim().split(/\s+/)[0];
+    if (!ALLOWED_INSTALL_BINARIES.has(binary)) {
+      errors.push(`${rel}: install command must use a known package manager, got: ${binary}`);
+    }
+  }
+  return errors;
+}
+
 function run() {
   const schema = JSON.parse(fs.readFileSync(SCHEMA_PATH, "utf8"));
   const ajv = new Ajv({ allErrors: true });
@@ -162,7 +287,38 @@ function run() {
       totalWarnings++;
     }
 
-    if (valid && bodyErrors.length === 0 && capErrors.length === 0) {
+    const installErrors = validateInstallCommands(frontmatter, rel);
+    for (const msg of installErrors) {
+      console.error(`FAIL  ${msg}`);
+      totalErrors++;
+    }
+
+    const packageErrors = validateInstallPackages(frontmatter, rel, rel.replace(/\\/g, "/").startsWith("partner-skills/"));
+    for (const msg of packageErrors) {
+      console.error(`FAIL  ${msg}`);
+      totalErrors++;
+    }
+
+    const crossRefErrors = crossReferenceCapabilities(frontmatter, content, rel);
+    for (const msg of crossRefErrors) {
+      console.warn(`WARN  ${msg}`);
+      totalWarnings++;
+    }
+
+    const isPartner = rel.replace(/\\/g, "/").startsWith("partner-skills/");
+    const interpResult = validateInterpreterSubcommands(frontmatter, rel, isPartner);
+    for (const msg of interpResult.errors) {
+      console.error(`FAIL  ${msg}`);
+      totalErrors++;
+    }
+    for (const msg of interpResult.warnings) {
+      console.warn(`WARN  ${msg}`);
+      totalWarnings++;
+    }
+
+    if (valid && bodyErrors.length === 0 && capErrors.length === 0
+        && installErrors.length === 0 && packageErrors.length === 0
+        && interpResult.errors.length === 0) {
       console.log(`PASS  ${rel}`);
     }
   }

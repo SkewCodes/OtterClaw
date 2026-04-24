@@ -1,6 +1,8 @@
 import { execFile } from "node:child_process";
-import { readFile as fsReadFile, writeFile as fsWriteFile, realpath } from "node:fs/promises";
-import { resolve as pathResolve } from "node:path";
+import { createHash } from "node:crypto";
+import { readFileSync, statSync } from "node:fs";
+import { readFile as fsReadFile, writeFile as fsWriteFile, realpath, lstat } from "node:fs/promises";
+import { resolve as pathResolve, basename as pathBasename } from "node:path";
 import type {
   SkillCapabilities,
   SkillFrontmatter,
@@ -52,12 +54,29 @@ interface SkillRuntimeDeps {
   bridge: SecClawBridge;
   /** SecClaw DependencyAttestor endpoint for package-manager calls. */
   dependencyAttestorUrl?: string;
+  /** Absolute path to the SKILL.md file for integrity verification. */
+  skillFilePath?: string;
   /**
    * Capabilities from the previous version of this skill. When provided and
    * the current version has expanded capabilities, a `skill.capability.expanded`
    * event is emitted to SecClaw at runtime creation time.
    */
   previousCapabilities?: SkillCapabilities;
+}
+
+const NETWORK_CAPABLE_BINARIES = new Set(["curl", "wget", "git", "npm", "npx", "yarn", "pnpm"]);
+
+function extractUrlsFromArgs(args: string[]): string[] {
+  return args.filter(arg =>
+    arg.startsWith("http://") || arg.startsWith("https://"),
+  );
+}
+
+function sanitizeError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  return msg
+    .replace(/https?:\/\/[^\s]+/g, "[redacted-url]")
+    .replace(/(?:\/[\w.-]+){2,}/g, "[redacted-path]");
 }
 
 function blocked(reason: string): ExecResult {
@@ -98,8 +117,84 @@ export function diffCapabilities(
   };
 }
 
+const KNOWN_BIN_PATHS_UNIX: Record<string, string[]> = {
+  orderly: ["/usr/local/bin/orderly", "/usr/bin/orderly"],
+  npm: ["/usr/local/bin/npm", "/usr/bin/npm"],
+  npx: ["/usr/local/bin/npx", "/usr/bin/npx"],
+  yarn: ["/usr/local/bin/yarn", "/usr/bin/yarn"],
+  pnpm: ["/usr/local/bin/pnpm", "/usr/bin/pnpm"],
+  bun: ["/usr/local/bin/bun", "/usr/bin/bun"],
+  curl: ["/usr/bin/curl", "/usr/local/bin/curl"],
+  wget: ["/usr/bin/wget", "/usr/local/bin/wget"],
+  python3: ["/usr/bin/python3", "/usr/local/bin/python3"],
+  python: ["/usr/bin/python", "/usr/local/bin/python"],
+  git: ["/usr/bin/git", "/usr/local/bin/git"],
+  node: ["/usr/local/bin/node", "/usr/bin/node"],
+  gh: ["/usr/local/bin/gh", "/usr/bin/gh"],
+  docker: ["/usr/bin/docker", "/usr/local/bin/docker"],
+  pip: ["/usr/bin/pip", "/usr/local/bin/pip"],
+  pip3: ["/usr/bin/pip3", "/usr/local/bin/pip3"],
+};
+
+function resolveBinaryPath(binary: string): string | null {
+  const isWindows = process.platform === "win32";
+  if (isWindows) {
+    // On Windows, rely on PATH but validate the binary exists via where.exe semantics
+    // statSync on Windows .exe files: check common locations
+    const winPaths = [
+      `C:\\Program Files\\nodejs\\${binary}.cmd`,
+      `C:\\Program Files\\Git\\cmd\\${binary}.exe`,
+      `C:\\Program Files\\Git\\usr\\bin\\${binary}.exe`,
+    ];
+    for (const p of winPaths) {
+      try {
+        if (statSync(p).isFile()) return p;
+      } catch { /* not found */ }
+    }
+    return null;
+  }
+  const candidates = KNOWN_BIN_PATHS_UNIX[binary];
+  if (!candidates) return null;
+  for (const p of candidates) {
+    try {
+      if (statSync(p).isFile()) return p;
+    } catch { /* not found */ }
+  }
+  return null;
+}
+
+function resolveAllBinaries(caps: SkillCapabilities): Map<string, string> {
+  const resolved = new Map<string, string>();
+  for (const entry of caps.cli ?? []) {
+    const abs = resolveBinaryPath(entry.binary);
+    if (abs) resolved.set(entry.binary, abs);
+  }
+  return resolved;
+}
+
+const ZERO_HASH = "sha256:" + "0".repeat(64);
+
 export function createSkillRuntime(deps: SkillRuntimeDeps): SkillRuntime {
   const { skill, bridge } = deps;
+
+  if (skill.hash && skill.hash !== ZERO_HASH && deps.skillFilePath) {
+    const content = readFileSync(deps.skillFilePath, "utf-8");
+    const actual = "sha256:" + createHash("sha256").update(content).digest("hex");
+    if (actual !== skill.hash) {
+      bridge.emit({
+        type: "skill.capability.violation",
+        skillId: skill.id ?? skill.name,
+        timestamp: Date.now(),
+        payload: {
+          kind: "integrity",
+          detail: `Hash mismatch: declared ${skill.hash}, actual ${actual}`,
+        },
+      });
+      throw new Error(
+        `Skill "${skill.name}" integrity check failed — content hash mismatch`,
+      );
+    }
+  }
 
   if (!skill.capabilities) {
     throw new Error(
@@ -109,6 +204,7 @@ export function createSkillRuntime(deps: SkillRuntimeDeps): SkillRuntime {
   }
 
   const caps: SkillCapabilities = skill.capabilities;
+  const resolvedBinaries = resolveAllBinaries(caps);
 
   if (deps.previousCapabilities) {
     const delta = diffCapabilities(caps, deps.previousCapabilities);
@@ -147,6 +243,35 @@ export function createSkillRuntime(deps: SkillRuntimeDeps): SkillRuntime {
         return result;
       }
 
+      if (NETWORK_CAPABLE_BINARIES.has(binary)) {
+        for (const rawUrl of extractUrlsFromArgs(args)) {
+          try {
+            const urlHost = new URL(rawUrl).hostname;
+            if (!isEgressAllowed(caps, urlHost)) {
+              const result = blocked(
+                `Undeclared egress in ${binary} call: ${urlHost}`,
+              );
+              bridge.emit({
+                type: "skill.cli.blocked",
+                skillId: skill.id ?? skill.name,
+                timestamp: Date.now(),
+                payload: { binary, args, reason: result.reason! },
+              });
+              return result;
+            }
+          } catch {
+            const result = blocked(`Malformed URL in ${binary} args: ${rawUrl}`);
+            bridge.emit({
+              type: "skill.cli.blocked",
+              skillId: skill.id ?? skill.name,
+              timestamp: Date.now(),
+              payload: { binary, args, reason: result.reason! },
+            });
+            return result;
+          }
+        }
+      }
+
       if (isPackageManagerBinary(binary) && deps.dependencyAttestorUrl) {
         try {
           const attestRes = await globalThis.fetch(deps.dependencyAttestorUrl, {
@@ -160,10 +285,7 @@ export function createSkillRuntime(deps: SkillRuntimeDeps): SkillRuntime {
             }),
           });
           if (!attestRes.ok) {
-            const body = await attestRes.text();
-            const result = blocked(
-              `SecClaw DependencyAttestor rejected: ${body}`,
-            );
+            const result = blocked("SecClaw DependencyAttestor rejected install");
             bridge.emit({
               type: "skill.cli.blocked",
               skillId: skill.id ?? skill.name,
@@ -173,24 +295,23 @@ export function createSkillRuntime(deps: SkillRuntimeDeps): SkillRuntime {
             return result;
           }
         } catch (err) {
-          const result = blocked(
-            `SecClaw DependencyAttestor unreachable: ${err}`,
-          );
+          const result = blocked("SecClaw DependencyAttestor unreachable");
           bridge.emit({
             type: "skill.cli.blocked",
             skillId: skill.id ?? skill.name,
             timestamp: Date.now(),
-            payload: { binary, args, reason: result.reason! },
+            payload: { binary, args, reason: result.reason!, internalDetail: sanitizeError(err) },
           });
           return result;
         }
       }
 
       const childEnv = filterEnv(caps, options?.env);
+      const resolvedBin = resolvedBinaries.get(binary) ?? binary;
 
       return new Promise<ExecResult>((resolve) => {
         execFile(
-          binary,
+          resolvedBin,
           args,
           {
             cwd: options?.cwd,
@@ -276,6 +397,16 @@ export function createSkillRuntime(deps: SkillRuntimeDeps): SkillRuntime {
           );
         }
 
+        const currentOrigin = new URL(currentUrl).origin;
+        const isCrossOrigin = resolved.origin !== currentOrigin;
+
+        if (isCrossOrigin && currentInit.headers) {
+          const h = new Headers(currentInit.headers as Record<string, string>);
+          h.delete("Authorization");
+          h.delete("Cookie");
+          currentInit = { ...currentInit, headers: h };
+        }
+
         if (
           res.status === 301 ||
           res.status === 302 ||
@@ -299,7 +430,7 @@ export function createSkillRuntime(deps: SkillRuntimeDeps): SkillRuntime {
     },
 
     async readFile(path) {
-      const canonical = await normalizePath(path);
+      const canonical = await normalizePathForRead(path);
       if (!isFileReadAllowed(caps, canonical)) {
         bridge.emit({
           type: "skill.capability.violation",
@@ -313,7 +444,7 @@ export function createSkillRuntime(deps: SkillRuntimeDeps): SkillRuntime {
     },
 
     async writeFile(path, content) {
-      const canonical = await normalizePath(path);
+      const canonical = await normalizePathForWrite(path);
       if (!isFileWriteAllowed(caps, canonical)) {
         bridge.emit({
           type: "skill.capability.violation",
@@ -344,20 +475,30 @@ export function createSkillRuntime(deps: SkillRuntimeDeps): SkillRuntime {
   };
 }
 
+const BASE_ENV_ALLOWLIST = new Set([
+  "PATH", "HOME", "SHELL", "TERM", "LANG", "LC_ALL",
+  "USER", "LOGNAME", "TMPDIR", "TMP", "TEMP",
+  "NODE_ENV", "NODE_PATH",
+]);
+
 /**
- * Build a filtered copy of the given env (or process.env) that excludes
- * vars matching the skill's `env.denied` patterns.
+ * Build a filtered copy of the given env (or process.env) that only includes
+ * vars in BASE_ENV_ALLOWLIST or explicitly declared in `env.reads`.
+ * `env.denied` patterns still override as a final block.
  */
 function filterEnv(
   caps: SkillCapabilities | undefined,
   base?: Record<string, string>,
 ): NodeJS.ProcessEnv {
   const source: Record<string, string | undefined> = base ?? process.env;
-  if (!caps?.env?.denied?.length) return { ...source };
+  const allowed = new Set([
+    ...BASE_ENV_ALLOWLIST,
+    ...(caps?.env?.reads ?? []),
+  ]);
 
   const filtered: NodeJS.ProcessEnv = {};
   for (const [key, value] of Object.entries(source)) {
-    if (!isEnvDenied(caps, key)) {
+    if (allowed.has(key) && !isEnvDenied(caps, key)) {
       filtered[key] = value;
     }
   }
@@ -365,13 +506,36 @@ function filterEnv(
 }
 
 /**
- * Resolve a path to its canonical form, collapsing `.`, `..`, and symlinks.
- * Falls back to `path.resolve` if the target doesn't exist yet (write case).
+ * Resolve a path to its canonical form for read operations.
+ * Uses realpath to follow symlinks; falls back to path.resolve.
  */
-async function normalizePath(p: string): Promise<string> {
+async function normalizePathForRead(p: string): Promise<string> {
   try {
     return await realpath(p);
   } catch {
     return pathResolve(p);
+  }
+}
+
+/**
+ * Resolve a path for write operations. Detects symlinks via lstat so the
+ * kernel's symlink-following on write doesn't bypass denied-path checks.
+ */
+async function normalizePathForWrite(p: string): Promise<string> {
+  const resolved = pathResolve(p);
+  try {
+    const stat = await lstat(resolved);
+    if (stat.isSymbolicLink()) {
+      return await realpath(resolved);
+    }
+    return resolved;
+  } catch {
+    const parent = pathResolve(p, "..");
+    try {
+      const parentReal = await realpath(parent);
+      return pathResolve(parentReal, pathBasename(resolved));
+    } catch {
+      return resolved;
+    }
   }
 }

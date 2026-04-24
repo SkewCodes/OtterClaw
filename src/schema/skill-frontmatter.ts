@@ -1,3 +1,5 @@
+import { normalize } from "node:path";
+
 export interface CliCapability {
   binary: string;
   subcommands: string[];
@@ -151,10 +153,13 @@ function matchesAnyWildcard(
  * Minimal glob matcher supporting * and ** segments.
  * Not a full glob implementation — covers the patterns used in capability manifests.
  * Normalizes backslashes to forward slashes for Windows compatibility.
+ * Rejects any path containing ".." traversal components.
  */
 function globMatch(pattern: string, value: string): boolean {
-  const normalized = value.replace(/\\/g, "/");
-  const regexStr = pattern
+  const normalized = normalize(value).replace(/\\/g, "/");
+  if (/(?:^|[\\/])\.\.(?:[\\/]|$)/.test(normalized)) return false;
+  const normalizedPattern = normalize(pattern).replace(/\\/g, "/");
+  const regexStr = normalizedPattern
     .replace(/[.+^${}()|[\]\\]/g, "\\$&")
     .replace(/\*\*/g, "\0")
     .replace(/\*/g, "[^/]*")
